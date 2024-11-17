@@ -46,10 +46,11 @@ Aiming.FOVCircle = circle
 -- // Update FOV Circle
 function Aiming.UpdateFOV()
     if not circle then return end
+    
     circle.Visible = Aiming.ShowFOV
     circle.Radius = Aiming.FOV * 3
-    circle.Position = Vector2new(Mouse.X, Mouse.Y + GetGuiInset(GuiService).Y)
-    circle.NumSides = Aiming.FOVSides
+    circle.Position = Vector2.new(Mouse.X, Mouse.Y + GuiService:GetGuiInset().Y)
+    circle.NumSides = math.max(Aiming.FOVSides, 3) -- Ensure minimum sides is 3.
     circle.Color = Aiming.FOVColour
 end
 
