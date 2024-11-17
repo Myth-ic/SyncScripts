@@ -1,0 +1,137 @@
+-- // Services
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local GuiService = game:GetService("GuiService")
+local RunService = game:GetService("RunService")
+
+-- // Vars
+local LocalPlayer = Players.LocalPlayer or Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+local CurrentCamera = Workspace.CurrentCamera
+local Mouse = LocalPlayer:GetMouse()
+
+-- // Optimize Function Access
+local Drawingnew = Drawing.new
+local Color3fromRGB = Color3.fromRGB
+local Vector2new = Vector2.new
+local GetGuiInset = GuiService.GetGuiInset
+local WorldToViewportPoint = CurrentCamera.WorldToViewportPoint
+
+-- // Silent Aim Configurations
+getgenv().Aiming = {
+    Enabled = true,
+    ShowFOV = true,
+    FOV = 40,
+    FOVSides = 16,
+    FOVColour = Color3fromRGB(255, 255, 255),
+    VisibleCheck = true,
+    HitChance = 100,
+    Selected = nil,
+    SelectedPart = nil,
+    TargetPart = {"Head", "HumanoidRootPart"},
+    Ignored = {
+        Players = {},
+        Teams = {}
+    }
+}
+local Aiming = getgenv().Aiming
+
+-- // Create FOV Circle
+local circle = Drawingnew("Circle")
+circle.Transparency = 1
+circle.Thickness = 2
+circle.Color = Aiming.FOVColour
+circle.Filled = false
+Aiming.FOVCircle = circle
+
+-- // Update FOV Circle
+function Aiming.UpdateFOV()
+    if not circle then return end
+    circle.Visible = Aiming.ShowFOV
+    circle.Radius = Aiming.FOV * 3
+    circle.Position = Vector2new(Mouse.X, Mouse.Y + GetGuiInset(GuiService).Y)
+    circle.NumSides = Aiming.FOVSides
+    circle.Color = Aiming.FOVColour
+end
+
+-- // Check Visibility
+function Aiming.IsPartVisible(Part, PartDescendant)
+    local Character = LocalPlayer.Character
+    if not Character then return false end
+
+    local Origin = CurrentCamera.CFrame.Position
+    local _, OnScreen = WorldToViewportPoint(CurrentCamera, Part.Position)
+    if not OnScreen then return false end
+
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    raycastParams.FilterDescendantsInstances = {Character, CurrentCamera}
+
+    local Result = Workspace:Raycast(Origin, Part.Position - Origin, raycastParams)
+    if Result then
+        return Result.Instance:IsDescendantOf(PartDescendant)
+    end
+    return false
+end
+
+-- // Get Closest Target Part
+function Aiming.GetClosestTargetPartToCursor(Character)
+    local ClosestPart = nil
+    local ShortestDistance = math.huge
+
+    for _, TargetPartName in ipairs(Aiming.TargetPart) do
+        local Part = Character:FindFirstChild(TargetPartName)
+        if Part then
+            local ScreenPos, OnScreen = WorldToViewportPoint(CurrentCamera, Part.Position)
+            if OnScreen then
+                local Distance = (Vector2new(ScreenPos.X, ScreenPos.Y) - Vector2new(Mouse.X, Mouse.Y)).Magnitude
+                if Distance < ShortestDistance then
+                    ClosestPart = Part
+                    ShortestDistance = Distance
+                end
+            end
+        end
+    end
+    return ClosestPart
+end
+
+-- // Find Closest Player to Cursor
+function Aiming.GetClosestPlayerToCursor()
+    local ClosestPlayer = nil
+    local ClosestDistance = math.huge
+
+    for _, Player in ipairs(Players:GetPlayers()) do
+        if Player ~= LocalPlayer and not table.find(Aiming.Ignored.Players, Player) then
+            local Character = Player.Character
+            if Character and Aiming.CheckHealth(Player) then
+                local TargetPart = Aiming.GetClosestTargetPartToCursor(Character)
+                if TargetPart then
+                    local ScreenPos, OnScreen = WorldToViewportPoint(CurrentCamera, TargetPart.Position)
+                    if OnScreen then
+                        local Distance = (Vector2new(ScreenPos.X, ScreenPos.Y) - Vector2new(Mouse.X, Mouse.Y)).Magnitude
+                        if Distance < Aiming.FOV * 3 and Distance < ClosestDistance then
+                            ClosestPlayer = Player
+                            ClosestDistance = Distance
+                        end
+                    end
+                end
+            end
+        end
+    end
+    Aiming.Selected = ClosestPlayer
+end
+
+-- // Check Player Health
+function Aiming.CheckHealth(Player)
+    local Character = Player.Character
+    local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
+    return Humanoid and Humanoid.Health > 0
+end
+
+-- // Update Function
+RunService.Heartbeat:Connect(function()
+    Aiming.UpdateFOV()
+    Aiming.GetClosestPlayerToCursor()
+end)
+
+-- // Return Aiming Module
+return Aiming
